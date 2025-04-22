@@ -6,7 +6,8 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 # 设置上传文件夹路径
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+# Vercel 使用 /tmp 目录进行临时文件存储
+UPLOAD_FOLDER = '/tmp'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -42,6 +43,10 @@ def upload_file():
             return jsonify({'columns': columns, 'filepath': filepath})
         except Exception as e:
             return jsonify({'error': f'处理Excel文件时出错: {str(e)}'}), 500
+        finally:
+            # 清理临时文件
+            if os.path.exists(filepath):
+                os.remove(filepath)
     
     return jsonify({'error': '不支持的文件类型'}), 400
 
@@ -67,15 +72,21 @@ def filter_excel():
         output_filepath = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
         filtered_df.to_excel(output_filepath, index=False)
         
-        return send_file(
-            output_filepath,
-            as_attachment=True,
-            download_name=output_filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+        # 发送文件并在发送后删除
+        try:
+            return send_file(
+                output_filepath,
+                as_attachment=True,
+                download_name=output_filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        finally:
+            # 清理临时文件
+            if os.path.exists(output_filepath):
+                os.remove(output_filepath)
     
     except Exception as e:
         return jsonify({'error': f'处理文件时出错: {str(e)}'}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True) 
+# Vercel 需要这个应用实例
+app.debug = True 
